@@ -7,7 +7,7 @@ import uuid
 from Bio.Blast import NCBIXML
 
 
-class FlaskJob:
+class Job:
     def __init__(self, status='submitted', error=False, finished=False, future=None, executor=None):
         self.status = status
         self.error = error
@@ -29,8 +29,7 @@ class FlaskJob:
                                                                        self.future)
 
 
-class BlastJob(FlaskJob):
-
+class BlastJob(Job):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.blast_executable = ''
@@ -38,7 +37,6 @@ class BlastJob(FlaskJob):
         self.directory_tmp = '/tmp/'
         self.directory_query = ''
         self.get_locations()
-
 
     def get_locations(self):
 
@@ -65,11 +63,11 @@ class BlastJob(FlaskJob):
     def run(self, parameters=None):
         if parameters is None:
             parameters = {}
-        job_id = parameters.get('job_id', 'job_id')
+        job_id = parameters.get('job_id', self.get_job_id())
         num_threads = parameters.get('num_threads', 4)
         output_format = parameters.get('outfmt', 5)
-        filename_query = '{}/{}.fa'.format(self.directory_db, job_id)
-        seq = seq_from_fasta(parameters['sequence'])
+        filename_query = os.path.join(self.directory_db, 'blast_{}.fa'.format(job_id))
+        seq = parameters['sequence']
 
         with open(filename_query, 'w') as f:
             f.write(seq)
@@ -90,13 +88,20 @@ class BlastJob(FlaskJob):
             self.error = True
         self.finished = True
         self.status = 'finished'
+        return job_id
 
     def get_accession(self, accession):
 
         filename = None
         while filename is None or os.path.exists(filename):
-            filename = os.path.join(self.directory_tmp, "blastdbcmd_{}".format(get_job_id()))
-        accession = '\n'.join(accession.split(';'))
+            filename = os.path.join(self.directory_tmp, "blastdbcmd_{}".format(BlastJob.get_job_id()))
+        if isinstance(accession, str):
+            accession = accession.replace(';', '\n')
+        elif isinstance(accession, list):
+            accession = '\n'.join(accession)
+        else:
+            raise ValueError('accession must be either str or list')
+
         with open(filename, 'w') as f:
             f.write(accession)
         call = [self.blast_executable.replace('blastn', 'blastdbcmd'),
@@ -111,27 +116,17 @@ class BlastJob(FlaskJob):
             return {'error': stderr}
         return stdout
 
+    @staticmethod
+    def extract_hits_from_blast(blast_xml):
+        if isinstance(blast_xml, str):
+            blast_xml = io.StringIO(blast_xml)
+        blast_records = NCBIXML.read(blast_xml)
+        hits = []
+        for alignment in blast_records.alignments:
+            hits.append(alignment.accession)
+        return hits
 
-def get_job_id():
-    return uuid.uuid4().hex[0:8]
+    @staticmethod
+    def get_job_id():
+        return uuid.uuid4().hex[0:8]
 
-
-def seq_from_fasta(seq):
-    return seq
-    seq = seq.strip()
-    lines = seq.splitlines()
-    if lines[0].startswith('>'):
-        start = 1
-    else:
-        start = 0
-    return ''.join(seq[start:])
-
-
-def extract_hits_from_blast(blast_xml):
-    if isinstance(blast_xml, str):
-        blast_xml = io.StringIO(blast_xml)
-    blast_records = NCBIXML.read(blast_xml)
-    hits = []
-    for alignment in blast_records.alignments:
-        hits.append(alignment.accession)
-    return hits

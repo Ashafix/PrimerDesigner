@@ -1,14 +1,21 @@
 import sys
+import os
 import subprocess
+import time
 import primer3
+import concurrent.futures
+import functools
+import yaml
+
 from Bio import SeqIO
 from isPcrParser import *
+from FlaskJob import BlastJob
 
 
 class Primer:
     def __init__(self):
-        seq = ''
-        gc = None
+        self.seq = ''
+        self.gc = None
 
     def __hash__(self):
         return hash(self.seq)
@@ -37,8 +44,8 @@ class Primer:
 class PrimerPair:
 
     def __init__(self):
-        forward = Primer()
-        reverse = Primer()
+        self.forward = Primer()
+        self.reverse = Primer()
 
     def __repr__(self):
         repr = ''
@@ -62,16 +69,49 @@ class PrimerPair:
 
 
 class GfServer:
-    def __init__(self, port=12345, executable='./gfServer'):
+    def __init__(self, port=12345, executable=None, file_2bit=None, file_fasta=None):
         self.port = port
         self.executable = executable
         self.process = None
+        self.file_2bit = file_2bit
+        self.file_fasta = file_fasta
+        if executable is None:
+            self.get_location()
+
+        if file_fasta is not None and file_2bit is None:
+            self.convert_fasta_to_2bit()
+
+    def get_location(self):
+        conf_filename = 'blast.conf'
+
+        if os.path.isfile(conf_filename):
+            with open(conf_filename, 'r') as f:
+                self.executable = yaml.load(f)['gfserver']
+        else:
+            self.executable = os.environ.get('GFSERVER')
+        if not os.path.isfile(self.executable):
+            raise ValueError('gfServer executable not found in location: {}'.format(self.executable))
+        return self.executable
 
     def start(self):
         self.process = subprocess.Popen(
-            [self.executable, '-canStop', '-stepSize=5', 'start', 'localhost', str(self.port), 'seq100.2bit'],
+            [self.executable, '-canStop', '-stepSize=5', 'start', 'localhost', str(self.port), self.file_2bit],
             stdout=subprocess.PIPE)
         return self.process
+
+    def convert_fasta_to_2bit(self):
+        """
+        Converts a FASTA file to 2bit format
+        :return: str, the full path of the 2bit file
+        """
+        exec_2bit = self.executable[0:self.executable.rfind('gfServer')] + 'faToTwoBit'
+        if self.file_fasta.endswith('.fa'):
+            self.file_2bit = self.file_fasta[0:self.file_fasta.rfind('.fa')] + '.2bit'
+        else:
+            self.file_2bit = self.file_fasta + '.2bit'
+        p = subprocess.Popen([exec_2bit, self.file_fasta, self.file_2bit])
+        p.communicate()
+        return self.file_2bit
 
     @staticmethod
     def parse_response(response):
@@ -79,7 +119,7 @@ class GfServer:
             response = response.decode()
         response = response.strip()
 
-        return (len(response.splitlines()))
+        return len(response.splitlines())
 
     def call(self, primer_pair, max_distance=1500, trials=100):
         sub = None
@@ -136,8 +176,8 @@ def create_primers(record, number_of_primers=1000):
         })
 
 
-def validate_primerpairs(primer_pairs):
-    gfserver = GfServer()
+def validate_primerpairs(primer_pairs, filename=None):
+    gfserver = GfServer(file_fasta=filename)
     gfserver.start()
     validated = list()
     for pp in primer_pairs:
@@ -150,21 +190,40 @@ def validate_primerpairs(primer_pairs):
     return validated
 
 
-def main(filename, number_of_primers):
+def design_primers(filename, number_of_primers):
     # get target sequence
     record = SeqIO.read(filename, 'fasta')
 
     # run BLAST in the background
+    blast = BlastJob()
+    blast.run(parameters={'sequence': record.format('fasta')})
+
+    while not blast.finished:
+        time.sleep(0.1)
 
     # get BLAST sequences
-    primers = create_primers(record, number_of_primers=number_of_primers)
+    executor = concurrent.futures.ThreadPoolExecutor(4)
+    future_blast = executor.submit(functools.partial(blast.extract_hits_from_blast, blast.stdout))
+
+    acc_hits = future_blast.result(timeout=120)
+    filename_hits = blast.get_job_id() + '.fa'
+    with open(filename_hits, 'w') as f:
+        f.write(blast.get_accession(acc_hits))
 
     primer_pairs = list()
-    for i in range(number_of_primers):
-        pp = PrimerPair.parse_primer3(primers, index=i)
-        primer_pairs.append(pp)
-
-    valid_pairs = validate_primerpairs(primer_pairs)
+    primer_pairs_to_screen = 100
+    valid_pairs = []
+    primers = {}
+    while len(valid_pairs) < number_of_primers:
+        old_len = primers.get('PRIMER_LEFT_NUM_RETURNED', 0)
+        future_primers = executor.submit(functools.partial(create_primers, record,
+                                                           number_of_primers=primer_pairs_to_screen))
+        primers = future_primers.result(timeout=120)
+        for i in range(old_len, primers['PRIMER_LEFT_NUM_RETURNED']):
+            pp = PrimerPair.parse_primer3(primers, index=i)
+            primer_pairs.append(pp)
+        valid_pairs = list(set(validate_primerpairs(primer_pairs, filename=filename_hits)))
+        primer_pairs_to_screen = primer_pairs_to_screen * 2
 
     for valid in valid_pairs:
         # run against all nucleotides
@@ -172,9 +231,11 @@ def main(filename, number_of_primers):
         # collect new sequences
 
         # add new sequences to initial
-        print(valid)
         pass
+
+    return valid_pairs[0:number_of_primers]
 
 
 if __name__ == '__main__':
-    main(sys.argv[1], int(sys.argv[2]))
+    p = design_primers(sys.argv[1], int(sys.argv[2]))
+    print(p)
