@@ -40,6 +40,7 @@ class BlastJob(Job):
         self.directory_tmp = '/tmp/'
         self.directory_query = ''
         self.get_locations()
+        self.defaults = self._get_defaults()
 
     def get_locations(self):
 
@@ -57,7 +58,7 @@ class BlastJob(Job):
             raise ValueError('Blast executable and database dir need to be present '
                              'in config file or environment variable')
         if self.directory_query is None or len(self.directory_query) == 0:
-            self.directory_query = os.path.join(self.directory_db, '..', 'queery')
+            self.directory_query = os.path.join(self.directory_db, '..', 'query')
 
         if not os.path.isdir(self.directory_query):
             os.makedirs(self.directory_query)
@@ -72,8 +73,7 @@ class BlastJob(Job):
         call = [self.blast_executable,
                 '-db', '{}/nt'.format(self.directory_db),
                 '-outfmt', str(parameters['outfmt'])]
-        # TODO default
-        if len(seq.split('\n', 1)[-1]) < 25:
+        if len(seq.split('\n', 1)[-1]) < self.defaults['short_sequence']:
             call.append('-task')
             call.append('blastn-short')
 
@@ -184,8 +184,7 @@ class BlastJob(Job):
         parameters['sequence'] = seq
         parameters['job_id'] = job_id
 
-        # TODO default
-        num_threads = parameters.get('num_threads', 6)
+        num_threads = parameters.get('num_threads', self.defaults['num_threads'])
         if not isinstance(num_threads, int):
             try:
                 num_threads = int(num_threads)
@@ -195,8 +194,7 @@ class BlastJob(Job):
             raise ValueError('num_threads needs to be 1 or higher')
         parameters['num_threads'] = num_threads
 
-        # TODO default
-        outfmt = parameters.get('outfmt ', 5)
+        outfmt = parameters.get('outfmt', self.defaults['outfmt'])
         if not isinstance(outfmt, int):
             try:
                 num_threads = int(num_threads)
@@ -208,3 +206,16 @@ class BlastJob(Job):
         parameters['outfmt'] = outfmt
 
         return parameters
+
+    def _get_defaults(self):
+        filename = 'blast_defaults'
+        if os.path.isfile(filename):
+            with open(filename, 'r') as f:
+                defaults = yaml.loads(f)
+        else:
+            defaults = {}
+        defaults['short_sequence'] = int(defaults.get('short_sequence', 25))
+        defaults['num_threads'] = int(defaults.get('num_threads', 6))
+        defaults['outfmt'] = int(defaults.get('outfmt', 5))
+        self.defaults = defaults
+        return defaults
