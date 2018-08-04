@@ -179,7 +179,7 @@ def create_primers(record, number_of_primers=1000):
 def validate_primerpairs(primer_pairs, filename=None):
     gfserver = GfServer(file_fasta=filename)
     gfserver.start()
-    validated = list()
+    validated = []
     for pp in primer_pairs:
         r = gfserver.call(pp)
         no_r = (GfServer.parse_response(r.stdout))
@@ -192,8 +192,10 @@ def validate_primerpairs(primer_pairs, filename=None):
 
 def design_primers(filename, number_of_primers):
     # get target sequence
-    record = SeqIO.read(filename, 'fasta')
-
+    try:
+        record = SeqIO.read(filename, 'fasta')
+    except ValueError as e:
+        raise e
     # run BLAST in the background
     blast = BlastJob()
     blast.run(parameters={'sequence': record.format('fasta')})
@@ -206,12 +208,13 @@ def design_primers(filename, number_of_primers):
     future_blast = executor.submit(functools.partial(blast.extract_hits_from_blast, blast.stdout))
 
     acc_hits = future_blast.result(timeout=120)
-    filename_hits = blast.get_job_id() + '.fa'
+    # TODO default
+    filename_hits = os.path.join(os.getcwd(), '..', 'input', blast.get_job_id() + '.fa')
     with open(filename_hits, 'w') as f:
         f.write(blast.get_accession(acc_hits))
 
-    primer_pairs = list()
-    primer_pairs_to_screen = 100
+    primer_pairs = []
+    primer_pairs_to_screen = 3200
     valid_pairs = []
     primers = {}
     while len(valid_pairs) < number_of_primers:
@@ -225,17 +228,29 @@ def design_primers(filename, number_of_primers):
         valid_pairs = list(set(validate_primerpairs(primer_pairs, filename=filename_hits)))
         primer_pairs_to_screen = primer_pairs_to_screen * 2
 
-    for valid in valid_pairs:
+    with open('optimal_pairs.txt', 'a') as f:
+        f.write(str(primer_pairs_to_screen))
+        f.write('\n')
+    blast_outputs = []
+    for v, valid in enumerate(valid_pairs):
         # run against all nucleotides
-
+        for orientation in ('forward', 'reverse'):
+            sequence = '>{}_{}\n{}'.format(orientation, v, valid.__getattribute__(orientation).seq)
+            blast.run(parameters={'sequence': sequence})
+            while not blast.finished:
+                time.sleep(0.1)
+            blast_outputs.extend(blast.extract_hits_from_blast(blast.stdout))
         # collect new sequences
-
+        print(blast_outputs, file=sys.stderr)
         # add new sequences to initial
         pass
 
-    return valid_pairs[0:number_of_primers]
+    acc_hits = blast.get_accessions_from_list(blast_outputs)
+    #print(acc_hits, file=sys.stderr)
 
+    return valid_pairs[0:number_of_primers]
 
 if __name__ == '__main__':
     p = design_primers(sys.argv[1], int(sys.argv[2]))
     print(p)
+    

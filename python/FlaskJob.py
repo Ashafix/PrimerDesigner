@@ -1,9 +1,12 @@
-import subprocess
 import sys
 import io
 import os
 import yaml
 import uuid
+import subprocess
+import hashlib
+import time
+import sqlite3
 from Bio.Blast import NCBIXML
 
 
@@ -54,41 +57,68 @@ class BlastJob(Job):
             raise ValueError('Blast executable and database dir need to be present '
                              'in config file or environment variable')
         if self.directory_query is None or len(self.directory_query) == 0:
-            self.directory_query = os.path.join(self.directory_db, '..', 'query')
+            self.directory_query = os.path.join(self.directory_db, '..', 'queery')
 
         if not os.path.isdir(self.directory_query):
             os.makedirs(self.directory_query)
         return self.blast_executable, self.directory_db
 
-    def run(self, parameters=None):
-        if parameters is None:
-            parameters = {}
-        job_id = parameters.get('job_id', self.get_job_id())
-        num_threads = parameters.get('num_threads', 4)
-        output_format = parameters.get('outfmt', 5)
-        filename_query = os.path.join(self.directory_db, 'blast_{}.fa'.format(job_id))
+    def run(self, parameters=None, cache=True):
+        parameters = self._clean_parameters(parameters)
+        filename_query = os.path.join(self.directory_db, 'blast_{}.fa'.format(parameters['job_id']))
         seq = parameters['sequence']
-
         with open(filename_query, 'w') as f:
             f.write(seq)
         call = [self.blast_executable,
                 '-db', '{}/nt'.format(self.directory_db),
-                '-query', filename_query,
-                '-num_threads', str(num_threads),
-                '-outfmt', str(output_format)]
-        proc = subprocess.Popen(call,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
-        self.status = 'running'
-        self.stdout, self.stderr = proc.communicate()
-        self.stdout = self.stdout.decode('utf-8')
-        self.stderr = self.stderr.decode('utf-8')
+                '-outfmt', str(parameters['outfmt'])]
+        # TODO default
+        if len(seq.split('\n', 1)[-1]) < 25:
+            call.append('-task')
+            call.append('blastn-short')
+
+        if cache:
+            h = hashlib.md5(('_'.join(call) + '_' + seq.split('\n', 1)[-1]).encode('utf-8')).hexdigest()
+            conn = sqlite3.connect('blast_jobs.db')
+            c = conn.cursor()
+            cmd = "SELECT * FROM jobs WHERE id='{}'".format(h)
+            c.execute(cmd)
+            rows = c.fetchall()
+
+        if cache and len(rows) > 0:
+            self.stdout = rows[0][5]
+            self.stderr = rows[0][6]
+        else:
+            call.append('-query')
+            call.append(filename_query)
+            call.append('-num_threads')
+            call.append(str(parameters['num_threads']))
+            proc = subprocess.Popen(call,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
+
+            self.status = 'running'
+            self.stdout, self.stderr = proc.communicate()
+            self.stdout, self.stderr = self.stdout.decode('utf-8'), self.stderr.decode('utf-8')
+            if cache:
+                cmd = ("INSERT INTO jobs VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}')".format(h,
+                                                                                                   seq,
+                                                                                                   0000,
+                                                                                                   time.time(),
+                                                                                                   'finished',
+                                                                                                   self.stdout,
+                                                                                                   self.stderr))
+                c.execute(cmd)
 
         if self.stderr is None or len(self.stderr) > 0:
             self.error = True
         self.finished = True
         self.status = 'finished'
-        return job_id
+        if cache:
+            conn.commit()
+            conn.close()
+
+        return parameters['job_id']
 
     def get_accession(self, accession):
 
@@ -113,8 +143,17 @@ class BlastJob(Job):
                                 universal_newlines=True)
         stdout, stderr = proc.communicate()
         if stderr is None or len(stderr) > 0:
+            print(stderr, file=sys.stderr)
             return {'error': stderr}
         return stdout
+
+    def get_accessions_from_list(self, accessions):
+        acc = list()
+        for accession in accessions:
+            acc.append(self.get_accession(accession))
+
+        acc = list(set(acc))
+        return acc
 
     @staticmethod
     def extract_hits_from_blast(blast_xml):
@@ -130,3 +169,42 @@ class BlastJob(Job):
     def get_job_id():
         return uuid.uuid4().hex[0:8]
 
+    def _clean_parameters(self, parameters):
+        seq = parameters.get('sequence')
+        if seq is None:
+            raise ValueError('No sequence provided')
+        job_id = parameters.get('job_id', self.get_job_id())
+        seq = seq.strip()
+        if len(seq) == 0:
+            raise ValueError('No sequence provided')
+
+        if not seq.startswith('>'):
+            seq = '>{}\n{}'.format(job_id, seq)
+        
+        parameters['sequence'] = seq
+        parameters['job_id'] = job_id
+
+        # TODO default
+        num_threads = parameters.get('num_threads', 6)
+        if not isinstance(num_threads, int):
+            try:
+                num_threads = int(num_threads)
+            except ValueError:
+                raise ValueError('num_threads must be an integer')
+        if num_threads < 1:
+            raise ValueError('num_threads needs to be 1 or higher')
+        parameters['num_threads'] = num_threads
+
+        # TODO default
+        outfmt = parameters.get('outfmt ', 5)
+        if not isinstance(outfmt, int):
+            try:
+                num_threads = int(num_threads)
+            except ValueError:
+                raise ValueError('outfmt must be an integer')
+        valid_outfmt = (1, 2, 3, 4, 5, 6)
+        if outfmt not in valid_outfmt:
+            raise ValueError('outfmt needs to be in {}'.format(valid_outfmt))
+        parameters['outfmt'] = outfmt
+
+        return parameters

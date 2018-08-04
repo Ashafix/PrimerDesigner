@@ -1,25 +1,21 @@
+import flask
 from flask import Flask
 from flask_restful import Resource, Api
 from flask_restful import reqparse
 from flask import jsonify
-import subprocess
 import sys
 import os
 import sqlite3
 import time
-import uuid
 import concurrent.futures
 import functools
-import uuid
 from FlaskJob import BlastJob
-import json
-import flask
 from designPrimer3 import design_primers
 
 
 app = Flask(__name__)
 api = Api(app)
-jobs = dict()
+jobs = {}
 executor = concurrent.futures.ThreadPoolExecutor(10)
 
 parser = reqparse.RequestParser()
@@ -52,7 +48,7 @@ class RestBlast(Resource):
 
         job = BlastJob()
         job_id = job.get_job_id()
-        cmd = ("INSERT INTO jobs VALUES ('{}', '{}', '{}', '{}', '{}')".format(job_id, args['sequence'], 0000, time.time(), 'submitted'))
+        cmd = ("INSERT INTO jobs VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}')".format(job_id, args['sequence'], 0000, time.time(), 'submitted', ''))
 
         conn = sqlite3.connect('blast_jobs.db')
         c = conn.cursor()
@@ -114,13 +110,24 @@ class RestDesignPrimers(Resource):
         parser.add_argument('number_of_pairs', type=int, required=False, default=5, help='Number of pairs to design')
 
         args = parser.parse_args()
-        filename = os.path.join(os.getcwd(), BlastJob.get_job_id() + '.fa')
+        # TODO default
+        filename = os.path.join(os.getcwd(), '..', 'input', BlastJob.get_job_id() + '.fa')
+        resp = {'error': False, 'primers': [], 'message': ''}
         with open(filename, 'w') as f:
             f.write(args['sequence'])
-        primers = design_primers(filename, args['number_of_pairs'])
+        try:
+            primers = design_primers(filename, args['number_of_pairs'])
+        except ValueError as e:
+            resp['error'] = True
+            resp['message'] = str(e)
+            return jsonify(resp)
         for p, primer in enumerate(primers):
             primers[p] = str(primer)
-        resp = {'primers': primers}
+        resp['primers'] = primers
+        if len(primers) == 0:
+            resp['message'] = 'Failed to design primers for the target sequence'
+        else:
+            resp['message'] = 'Successfully designed primers'
         return jsonify(resp)
 
 api.add_resource(RestBlast, '/blast/')
@@ -136,7 +143,7 @@ if __name__ == '__main__':
     c = conn.cursor()
     try:
         c.execute('''CREATE TABLE jobs
-                 (id text, sequence text, parameters text, date text, status text)''')
+                 (id text, sequence text, parameters text, date text, status text, stdout text, stderr text)''')
     except:
         pass
     conn.commit()
