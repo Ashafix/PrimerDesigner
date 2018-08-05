@@ -10,7 +10,7 @@ import time
 import concurrent.futures
 import functools
 from FlaskJob import BlastJob
-from designPrimer3 import design_primers
+from PrimerDesigner import design_primers
 
 
 app = Flask(__name__)
@@ -48,7 +48,13 @@ class RestBlast(Resource):
 
         job = BlastJob()
         job_id = job.get_job_id()
-        cmd = ("INSERT INTO jobs VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}')".format(job_id, args['sequence'], 0000, time.time(), 'submitted', ''))
+        cmd = ("INSERT INTO jobs VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}')".format(job_id,
+                                                                                           args['sequence'],
+                                                                                           0000,
+                                                                                           time.time(),
+                                                                                           'submitted',
+                                                                                           '',
+                                                                                           ''))
 
         conn = sqlite3.connect('blast_jobs.db')
         c = conn.cursor()
@@ -130,9 +136,48 @@ class RestDesignPrimers(Resource):
             resp['message'] = 'Successfully designed primers'
         return jsonify(resp)
 
+class RestBlastPrimers(Resource):
+    def get(self):
+        RestBlast().get()
+
+    def post(self):
+        parser = reqparse.RequestParser()
+        parser.add_argument('forward', type=str, help='The sequence of the forward primer')
+        parser.add_argument('reverse', type=str, help='The sequence of the reverse primer')
+
+        args = parser.parse_args()
+        args['sequence'] = args['forward'] + '_' + args['reverse']
+        job = BlastJob()
+        job_id = job.get_job_id()
+        cmd = (
+            "INSERT INTO jobs VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{}')".format(job_id,
+                                                                                        args['sequence'],
+                                                                                        0000,
+                                                                                        time.time(),
+                                                                                        'submitted',
+                                                                                        '',
+                                                                                        '',
+                                                                                        ''))
+
+        conn = sqlite3.connect('blast_jobs.db')
+        c = conn.cursor()
+        c.execute(cmd)
+        conn.commit()
+        conn.close()
+        args['job_id'] = job_id
+        print(args, file=sys.stderr)
+        args = job.set_arguments_for_primer_blast(args)
+        print(str(args) + '#' * 20, file=sys.stderr)
+        job.future = executor.submit(functools.partial(job.run, parameters=args))
+        jobs[job_id] = job
+
+        return job_id
+
+
 api.add_resource(RestBlast, '/blast/')
 api.add_resource(RestBlastMinimal, '/blast/<blast_id>')
 api.add_resource(RestBlastHits, '/blast/hits/<blast_id>')
+api.add_resource(RestBlastPrimers, '/blast_primers/')
 api.add_resource(RestNucleotide, '/nucleotide/')
 api.add_resource(RestNucleotideMinimal, '/nucleotide/<accession>')
 api.add_resource(RestDesignPrimers, '/design/')

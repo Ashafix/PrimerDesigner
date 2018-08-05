@@ -66,13 +66,35 @@ class BlastJob(Job):
 
     def run(self, parameters=None, cache=True):
         parameters = self._clean_parameters(parameters)
+        with open('touch.me', 'w') as f:
+            f.write(str(parameters))
+
+        print(parameters, file=sys.stderr)
         filename_query = os.path.join(self.directory_db, 'blast_{}.fa'.format(parameters['job_id']))
+        print(filename_query, file=sys.stderr)
         seq = parameters['sequence']
         with open(filename_query, 'w') as f:
             f.write(seq)
         call = [self.blast_executable,
                 '-db', '{}/nt'.format(self.directory_db),
                 '-outfmt', str(parameters['outfmt'])]
+
+        if False:
+            valid_blast_parameters = ('word_size', 'word_size', 'word_size', 'word_size', 'gapopen', 'gapextend',
+                                      'gapopen', 'gapextend', 'reward', 'penalty', 'reward', 'penalty', 'reward',
+                                      'penalty', 'strand', 'dust', 'filtering_db', 'window_masker_taxid',
+                                      'window_masker_db', 'soft_masking', 'lcase_masking', 'db_soft_mask', 'db_hard_mask',
+                                      'perc_identity', 'template_type', 'template_length', 'use_index', 'index_name',
+                                      'xdrop_ungap', 'xdrop_gap', 'xdrop_gap_final', 'no_greedy', 'min_raw_gapped_score',
+                                      'ungapped', 'window_size', 'outfmt', 'evalue')
+            other_blast_parameters = ('sequence', 'forward', 'reverse', 'job_id', 'num_threads', 'job_id')
+            for param_k, param_v in parameters.items():
+                if param_k in valid_blast_parameters:
+                    call.append('-{}'.format(param_k))
+                    call.append(param_v)
+                elif param_k not in other_blast_parameters:
+                    print('encountered invalid parameters: {}'.format(param_k), file=sys.stderr)
+                
         if len(seq.split('\n', 1)[-1]) < self.defaults['short_sequence']:
             call.append('-task')
             call.append('blastn-short')
@@ -84,6 +106,8 @@ class BlastJob(Job):
             cmd = "SELECT * FROM jobs WHERE id='{}'".format(h)
             c.execute(cmd)
             rows = c.fetchall()
+
+        print(' '.join(call), file=sys.stderr)
 
         if cache and len(rows) > 0:
             self.stdout = rows[0][5]
@@ -110,6 +134,7 @@ class BlastJob(Job):
                                                                                                    self.stderr))
                 c.execute(cmd)
 
+        print(' '.join(call), file=sys.stderr)
         if self.stderr is None or len(self.stderr) > 0:
             self.error = True
         self.finished = True
@@ -120,6 +145,21 @@ class BlastJob(Job):
 
         return parameters['job_id']
 
+    def set_arguments_for_primer_blast(self, parameters=None, cache=True):
+        if parameters is None:
+            parameters = {}
+
+        # based on the idea described here:
+        # https://eu.idtdna.com/pages/education/decoded/article/tips-for-using-blast-to-locate-pcr-primers
+        parameters['word_size'] = 7
+        parameters['evalue'] = 1000
+        # TODO check if work as expected
+        parameters['dust'] = 'no'
+
+        parameters['sequence'] = parameters['forward'] + 'N' * 10 + parameters['reverse']
+        print(parameters, file=sys.stderr)
+        return parameters
+    
     def get_accession(self, accession):
 
         filename = None
@@ -194,15 +234,20 @@ class BlastJob(Job):
             raise ValueError('num_threads needs to be 1 or higher')
         parameters['num_threads'] = num_threads
 
-        outfmt = parameters.get('outfmt', self.defaults['outfmt'])
-        if not isinstance(outfmt, int):
-            try:
-                num_threads = int(num_threads)
-            except ValueError:
-                raise ValueError('outfmt must be an integer')
-        valid_outfmt = (1, 2, 3, 4, 5, 6)
-        if outfmt not in valid_outfmt:
+        outfmt = str(parameters.get('outfmt', self.defaults['outfmt'])).lower()
+        valid_outfmt = ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11')
+        outfmt_parts = outfmt.split(' ')
+        if outfmt_parts[0] not in valid_outfmt:
             raise ValueError('outfmt needs to be in {}'.format(valid_outfmt))
+        if len(outfmt_parts) > 1:
+            valid_fmtext = ('qseqid', 'qgi', 'qacc', 'sseqid', 'sallseqid', 'sgi', 'sallgi', 'sacc', 'sallacc',
+                            'qstart', 'qend', 'sstart', 'send', 'qseq', 'sseq', 'evalue', 'bitscore', 'score', 'length',
+                            'pident', 'nident', 'mismatch', 'positive', 'gapopen', 'gaps', 'ppos', 'frames', 'qframe',
+                            'sframe', 'btop', 'staxids', 'sscinames', 'scomnames', 'sblastnames', 'vsskingdoms',
+                            'stitle', 'salltitles', 'sstrand', 'qcovs', 'qcovhsp', 'qcovus')
+            for p in outfmt_parts[1:]:
+                if p not in valid_fmtext:
+                    raise ValueError('found invalid format extension: {}'.format(p))
         parameters['outfmt'] = outfmt
 
         return parameters

@@ -52,7 +52,6 @@ class PrimerPair:
         repr += 'Forward: {}\n'.format(self.forward.seq)
         repr += 'Reverse: {}'.format(self.reverse.seq)
         return repr
-
     def __hash__(self):
         return hash(self.forward.seq + "|" + self.reverse.seq)
 
@@ -249,8 +248,3 @@ def design_primers(filename, number_of_primers):
     #print(acc_hits, file=sys.stderr)
 
     return valid_pairs[0:number_of_primers]
-
-if __name__ == '__main__':
-    p = design_primers(sys.argv[1], int(sys.argv[2]))
-    print(p)
-    
