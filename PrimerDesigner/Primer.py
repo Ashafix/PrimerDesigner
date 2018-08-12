@@ -8,8 +8,7 @@ import functools
 import yaml
 
 from Bio import SeqIO
-from isPcrParser import *
-from FlaskJob import BlastJob
+from PrimerDesigner.FlaskJob import BlastJob
 
 
 class Primer:
@@ -189,14 +188,20 @@ def validate_primerpairs(primer_pairs, filename=None):
     return validated
 
 
-def design_primers(filename, number_of_primers):
+def make_directories():
+    os.makedirs(os.path.join(os.path.dirname(__file__), 'data', 'input'), exist_ok=True)
+
+
+def design_primers(filename, number_of_primers, database='nt', primer_pairs_to_screen=3200):
+
+    make_directories()
     # get target sequence
     try:
         record = SeqIO.read(filename, 'fasta')
     except ValueError as e:
         raise e
     # run BLAST in the background
-    blast = BlastJob()
+    blast = BlastJob(blast_db=database)
     blast.run(parameters={'sequence': record.format('fasta')})
 
     while not blast.finished:
@@ -208,12 +213,11 @@ def design_primers(filename, number_of_primers):
 
     acc_hits = future_blast.result(timeout=120)
     # TODO default
-    filename_hits = os.path.join(os.getcwd(), '..', 'input', blast.get_job_id() + '.fa')
+    filename_hits = os.path.join(os.path.dirname(__file__), 'data', 'input', blast.get_job_id() + '.fa')
     with open(filename_hits, 'w') as f:
         f.write(blast.get_accession(acc_hits))
 
     primer_pairs = []
-    primer_pairs_to_screen = 3200
     valid_pairs = []
     primers = {}
     while len(valid_pairs) < number_of_primers:
@@ -240,11 +244,11 @@ def design_primers(filename, number_of_primers):
                 time.sleep(0.1)
             blast_outputs.extend(blast.extract_hits_from_blast(blast.stdout))
         # collect new sequences
-        print(blast_outputs, file=sys.stderr)
+        # print(blast_outputs, file=sys.stderr)
         # add new sequences to initial
         pass
 
-    acc_hits = blast.get_accessions_from_list(blast_outputs)
+    #acc_hits = blast.get_accessions_from_list(blast_outputs)
     #print(acc_hits, file=sys.stderr)
 
     return valid_pairs[0:number_of_primers]

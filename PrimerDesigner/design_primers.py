@@ -1,12 +1,14 @@
 import sys
+import os
 import argparse
-from PrimerDesigner import design_primers
+import Primer
 
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('targetSequence', type=str, help='either a plain sequence or a FASTA file')
     parser.add_argument('primerPairs', type=int, help='number of primer pairs which should be designed')
+    parser.add_argument('database', type=str, default='nt', help='the database which is used as a negative selection')
     return parser.parse_args(args)
 
 
@@ -24,7 +26,6 @@ if __name__ == '__main__':
     args = parse_args(sys.argv[1:])
     if not validate_args(args):
         sys.exit(1)
-    print(args)
-    p = design_primers(args.targetSequence, args.primerPairs)
+    p = Primer.design_primers(args.targetSequence, args.primerPairs, database=args.database)
     print(p)
 

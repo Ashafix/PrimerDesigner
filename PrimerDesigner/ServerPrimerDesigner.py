@@ -10,8 +10,8 @@ import time
 import concurrent.futures
 import functools
 from FlaskJob import BlastJob
-from PrimerDesigner import design_primers
-
+import design_primers
+from tools import tools
 
 app = Flask(__name__)
 api = Api(app)
@@ -56,7 +56,7 @@ class RestBlast(Resource):
                                                                                            '',
                                                                                            ''))
 
-        conn = sqlite3.connect('blast_jobs.db')
+        conn = sqlite3.connect(job.result_db)
         c = conn.cursor()
         c.execute(cmd)
         conn.commit()
@@ -159,7 +159,7 @@ class RestBlastPrimers(Resource):
                                                                                         '',
                                                                                         ''))
 
-        conn = sqlite3.connect('blast_jobs.db')
+        conn = sqlite3.connect(job.result_db)
         c = conn.cursor()
         c.execute(cmd)
         conn.commit()
@@ -174,6 +174,18 @@ class RestBlastPrimers(Resource):
         return job_id
 
 
+class RestShutdown(Resource):
+
+    def get(self):
+        func = flask.request.environ.get('werkzeug.server.shutdown')
+        if func is None:
+            raise RuntimeError('Not running with the Werkzeug Server')
+        func()
+
+    def post(self):
+        self.get()
+
+
 api.add_resource(RestBlast, '/blast/')
 api.add_resource(RestBlastMinimal, '/blast/<blast_id>')
 api.add_resource(RestBlastHits, '/blast/hits/<blast_id>')
@@ -181,17 +193,9 @@ api.add_resource(RestBlastPrimers, '/blast_primers/')
 api.add_resource(RestNucleotide, '/nucleotide/')
 api.add_resource(RestNucleotideMinimal, '/nucleotide/<accession>')
 api.add_resource(RestDesignPrimers, '/design/')
-
+api.add_resource(RestShutdown, '/shutdown/')
 
 if __name__ == '__main__':
-    conn = sqlite3.connect('blast_jobs.db')
-    c = conn.cursor()
-    try:
-        c.execute('''CREATE TABLE jobs
-                 (id text, sequence text, parameters text, date text, status text, stdout text, stderr text)''')
-    except:
-        pass
-    conn.commit()
-    conn.close()
+    tools.create_empty_database()
     app.run(host='0.0.0.0', debug=True)
 
