@@ -192,10 +192,22 @@ def make_directories():
     os.makedirs(os.path.join(os.path.dirname(__file__), 'data', 'input'), exist_ok=True)
 
 
+def write_sequence_to_file(sequence):
+
+    filename = os.path.join('/tmp/', 'file.fa')
+    with open(filename, 'w') as f:
+        f.write(sequence)
+    return filename
+
+
 def design_primers(filename, number_of_primers, database='nt', primer_pairs_to_screen=3200):
 
     make_directories()
     # get target sequence
+
+    if filename.startswith('>') and not os.path.isfile(filename):
+        filename = write_sequence_to_file(filename)
+
     try:
         record = SeqIO.read(filename, 'fasta')
     except ValueError as e:
@@ -206,6 +218,8 @@ def design_primers(filename, number_of_primers, database='nt', primer_pairs_to_s
 
     while not blast.finished:
         time.sleep(0.1)
+    if blast.stderr is None or blast.stderr != '':
+        raise RuntimeError('BLAST failed with error: {}'.format(blast.stderr))
 
     # get BLAST sequences
     executor = concurrent.futures.ThreadPoolExecutor(4)

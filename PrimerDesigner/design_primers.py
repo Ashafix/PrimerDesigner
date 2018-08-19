@@ -1,7 +1,7 @@
 import sys
 import os
 import argparse
-import Primer
+import PrimerDesigner.Primer
 
 
 def parse_args(args):

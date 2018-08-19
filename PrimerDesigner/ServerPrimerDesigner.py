@@ -9,9 +9,9 @@ import sqlite3
 import time
 import concurrent.futures
 import functools
-from FlaskJob import BlastJob
-import design_primers
-from tools import tools
+from PrimerDesigner.FlaskJob import BlastJob
+import PrimerDesigner.design_primers
+from PrimerDesigner.tools import tools
 
 app = Flask(__name__)
 api = Api(app)
@@ -195,7 +195,11 @@ api.add_resource(RestNucleotideMinimal, '/nucleotide/<accession>')
 api.add_resource(RestDesignPrimers, '/design/')
 api.add_resource(RestShutdown, '/shutdown/')
 
-if __name__ == '__main__':
-    tools.create_empty_database()
-    app.run(host='0.0.0.0', debug=True)
 
+def start(host='0.0.0.0', debug=False):
+    tools.create_empty_database()
+    app.run(host=host, debug=debug)
+
+
+if __name__ == '__main__':
+    start()

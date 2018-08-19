@@ -28,7 +28,7 @@ class Job:
                     'output': self.stdout, 'stderr': self.stderr})
 
     def __repr__(self):
-        return '{}(status={}, error={}, finished={}, future={}'.format(self.__class__,
+        return '{}(status={}, error={}, finished={}, future={})'.format(self.__class__,
                                                                        self.status,
                                                                        self.error,
                                                                        self.finished,
@@ -44,8 +44,8 @@ class BlastJob(Job):
         self.directory_query = ''
         self.conf_file = conf_file
         self.blast_db = None
-        self.set_database(blast_db)
         self.get_locations()
+        self.set_database(blast_db)
         self.defaults = self._get_defaults()
         self.result_db = result_db
         self.run_hash = None
@@ -80,11 +80,11 @@ class BlastJob(Job):
         os.makedirs(self.directory_query, exist_ok=True)
         os.makedirs(self.directory_tmp, exist_ok=True)
 
-        return self.blast_executable, self.blast_db
+        return self.blast_executable, self.directory_database
 
     def set_database(self, database):
         if database is None:
-            return None
+            database = 'nt'
         elif not isinstance(database, str):
             raise TypeError('database needs to be a str, got {}'.format(type(database)))
         if os.path.isfile(database):
@@ -204,6 +204,7 @@ class BlastJob(Job):
         parameters['evalue'] = 1000
         # TODO check if work as expected
         parameters['dust'] = 'no'
+
 
         parameters['sequence'] = parameters['forward'] + 'N' * 10 + parameters['reverse']
         return parameters
