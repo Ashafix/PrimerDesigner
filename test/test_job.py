@@ -1,16 +1,15 @@
 import unittest
-from PrimerDesigner import FlaskJob
-
+import PrimerDesigner
 
 class Job(unittest.TestCase):
 
     def test_basic_function(self):
-        job = FlaskJob.Job()
+        job = PrimerDesigner.Job.Job()
         self.assertNotEqual(str(job), '')
         self.assertNotEqual(job.__repr__(), '')
 
     def test_basic_attributes(self):
-        job = FlaskJob.Job()
+        job = PrimerDesigner.Job.Job()
         self.assertEqual(job.stdout, '')
         self.assertEqual(job.stderr, '')
 

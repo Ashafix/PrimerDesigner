@@ -314,3 +314,20 @@ class BlastJob(Job):
         defaults['outfmt'] = int(defaults.get('outfmt', 5))
         self.defaults = defaults
         return defaults
+
+    def fasta_to_blast_db(self, filename):
+        if filename.startswith('>') and not os.path.isfile(filename):
+            filename_ = 'blast_db.txt'
+            with open(filename_, 'w') as f:
+                f.write(filename)
+            filename = filename_
+        # TODO make replace prettier
+        call = [self.blast_executable.replace('blastn', 'makeblastdb'),
+                '-in', filename,
+                '-dbtype', 'nucl']
+        proc = subprocess.Popen(call,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        if proc.stderr is not None or proc.stderr != '':
+            raise RuntimeError('failed to convert FASTA {} to BLAST database. Error: {}'.format(filename, self.stderr))
+        return proc.stdout

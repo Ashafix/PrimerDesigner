@@ -8,7 +8,7 @@ import functools
 import yaml
 
 from Bio import SeqIO
-from PrimerDesigner.FlaskJob import BlastJob
+from PrimerDesigner.Job import BlastJob
 
 
 class Primer:
@@ -94,7 +94,8 @@ class GfServer:
     def start(self):
         self.process = subprocess.Popen(
             [self.executable, '-canStop', '-stepSize=5', 'start', 'localhost', str(self.port), self.file_2bit],
-            stdout=subprocess.PIPE)
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL)
         return self.process
 
     def convert_fasta_to_2bit(self):
@@ -133,14 +134,17 @@ class GfServer:
         return sub
 
     def stop(self):
-        subprocess.run([self.executable, 'stop', 'localhost', str(self.port)])
+        p = subprocess.run([self.executable, 'stop', 'localhost', str(self.port)],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL)
+        return p.check_returncode()
 
 
 def call_ispcr(primer_pair):
     with open('primerPair.txt', 'w') as f:
         f.write('{} {} {}'.format('bla', primer_pair.forward.seq, primer_pair.reverse.seq))
-    x = subprocess.run(['./isPcr', 'top500.fa', 'primerPair.txt', 'stdout'], stdout=subprocess.PIPE)
-    return x.stdout
+    p = subprocess.run(['./isPcr', 'top500.fa', 'primerPair.txt', 'stdout'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    return p.stdout
 
 
 def create_primers(record, number_of_primers=1000):

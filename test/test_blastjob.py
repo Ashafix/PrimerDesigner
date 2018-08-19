@@ -2,7 +2,7 @@ import unittest
 import os
 import sys
 import sqlite3
-from PrimerDesigner import FlaskJob
+from PrimerDesigner import Job
 
 
 class Blast(unittest.TestCase):
@@ -20,8 +20,8 @@ class Blast(unittest.TestCase):
             pass
 
     def test_basic_blast_positive(self):
-        job = FlaskJob.BlastJob(conf_file=os.path.join(os.getcwd(), 'data', 'blast.conf'),
-                                blast_db=os.path.join(os.getcwd(), 'data', 'random.fa'))
+        job = Job.BlastJob(conf_file=os.path.join(os.getcwd(), 'data', 'blast.conf'),
+                           blast_db=os.path.join(os.getcwd(), 'data', 'random.fa'))
         job.set_database(os.path.join(os.getcwd(), 'data', 'random.fa'))
         job.result_db = os.path.join(os.getcwd(), 'temp', 'tmp_blast.jobs.db')
         self.assertIsNotNone(job.blast_db)
@@ -31,11 +31,11 @@ class Blast(unittest.TestCase):
         self.assertNotEqual(len(job.defaults), 0)
 
     def test_basic_blast_negative(self):
-        self.assertRaises(ValueError, FlaskJob.BlastJob, 'I should not exist.txt')
+        self.assertRaises(ValueError, Job.BlastJob, 'I should not exist.txt')
 
     def test_basic_blast_run(self):
-        job = FlaskJob.BlastJob(conf_file=os.path.join(os.getcwd(), 'data', 'blast.conf'),
-                                blast_db=os.path.join(os.getcwd(), 'data', 'random.fa'))
+        job = Job.BlastJob(conf_file=os.path.join(os.getcwd(), 'data', 'blast.conf'),
+                           blast_db=os.path.join(os.getcwd(), 'data', 'random.fa'))
         job.set_database(os.path.join(os.getcwd(), 'data', 'random.fa'))
         job.result_db = os.path.join(os.getcwd(), 'temp', 'tmp_blast.jobs.db')
         job.directory_database = os.path.join(os.getcwd(), 'test')
@@ -48,8 +48,8 @@ class Blast(unittest.TestCase):
         self.assertEqual(job.stderr, '')
 
     def test_basic_blast_run_from_filename(self):
-        job = FlaskJob.BlastJob(conf_file=os.path.join(os.getcwd(), 'data', 'blast.conf'),
-                                blast_db=os.path.join(os.getcwd(), 'data', 'random.fa'))
+        job = Job.BlastJob(conf_file=os.path.join(os.getcwd(), 'data', 'blast.conf'),
+                           blast_db=os.path.join(os.getcwd(), 'data', 'random.fa'))
         job.set_database(os.path.join(os.getcwd(), 'data', 'random.fa'))
         job.result_db = os.path.join(os.getcwd(), 'temp', 'tmp_blast.jobs.db')
         job.directory_database = os.path.join(os.getcwd(), 'data')
@@ -60,8 +60,8 @@ class Blast(unittest.TestCase):
         self.assertNotEqual(job.stdout, '')
 
     def test_basic_blast_run_negative(self):
-        job = FlaskJob.BlastJob(conf_file=os.path.join(os.getcwd(), 'data', 'blast.conf'),
-                                blast_db=os.path.join(os.getcwd(), 'data', 'random.fa'))
+        job = Job.BlastJob(conf_file=os.path.join(os.getcwd(), 'data', 'blast.conf'),
+                           blast_db=os.path.join(os.getcwd(), 'data', 'random.fa'))
         job.set_database(os.path.join(os.getcwd(), 'data', 'random.fa'))
         job.result_db = os.path.join(os.getcwd(), 'temp', 'tmp_blast.jobs.db')
         job.directory_database = os.path.join(os.getcwd(), 'temp')
@@ -74,8 +74,8 @@ class Blast(unittest.TestCase):
         self.assertNotEqual(job.stderr, '')
 
     def test_blast_cache(self):
-        job = FlaskJob.BlastJob(conf_file=os.path.join(os.getcwd(), 'data', 'blast.conf'),
-                                blast_db=os.path.join(os.getcwd(), 'data', 'random.fa'))
+        job = Job.BlastJob(conf_file=os.path.join(os.getcwd(), 'data', 'blast.conf'),
+                           blast_db=os.path.join(os.getcwd(), 'data', 'random.fa'))
         job.result_db = os.path.join(os.getcwd(), 'temp', 'tmp_blast.jobs.db')
         job.directory_database = os.path.join(os.getcwd(), 'data')
         with open(os.path.join(os.getcwd(), 'data', 'random_sequence_0.fa'), 'r') as f:

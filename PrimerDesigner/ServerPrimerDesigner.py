@@ -9,7 +9,7 @@ import sqlite3
 import time
 import concurrent.futures
 import functools
-from PrimerDesigner.FlaskJob import BlastJob
+from PrimerDesigner.Job import BlastJob
 import PrimerDesigner.design_primers
 from PrimerDesigner.tools import tools
 
